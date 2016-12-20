@@ -110,26 +110,35 @@ func cgoBaseType(f *File, arg ast.Expr) types.Type {
 	return f.pkg.types[arg].Type
 }
 
-// typeOKForCgoCall returns true if the type of arg is OK to pass to a
-// C function using cgo. This is not true for Go types with embedded
-// pointers.
-func typeOKForCgoCall(t types.Type) bool {
+func typeOKForCgoCallRecursive(t types.Type, visited map[types.Type]bool) bool {
 	if t == nil {
 		return true
 	}
+	if visited[t] {
+		return false
+	}
+	visited[t] = true
 	switch t := t.Underlying().(type) {
 	case *types.Chan, *types.Map, *types.Signature, *types.Slice:
 		return false
 	case *types.Pointer:
-		return typeOKForCgoCall(t.Elem())
+		return typeOKForCgoCallRecursive(t.Elem(), visited)
 	case *types.Array:
-		return typeOKForCgoCall(t.Elem())
+		return typeOKForCgoCallRecursive(t.Elem(), visited)
 	case *types.Struct:
 		for i := 0; i < t.NumFields(); i++ {
-			if !typeOKForCgoCall(t.Field(i).Type()) {
+			if !typeOKForCgoCallRecursive(t.Field(i).Type(), visited) {
 				return false
 			}
 		}
 	}
 	return true
+}
+
+// typeOKForCgoCall returns true if the type of arg is OK to pass to a
+// C function using cgo. This is not true for Go types with embedded
+// pointers.
+func typeOKForCgoCall(t types.Type) bool {
+	visited := make(map[types.Type]bool)
+	return typeOKForCgoCallRecursive(t, visited)
 }
